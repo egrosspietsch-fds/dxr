@@ -688,6 +688,8 @@ public:
       const Expr *init = vd->getAnyInitializer(vd);
       if (!isa<ParmVarDecl>(vd) &&
           init && !init->getType().isNull() && !init->isValueDependent() &&
+          !vd->getType().isNull() && !vd->getType()->isDependentType() &&
+          !dyn_cast<DependentNameType>(vd->getType().getTypePtrOrNull()) &&
           vd->getType().isConstQualified()) {
         if (const APValue *apv = vd->evaluateValue()) {
           std::string ret = apv->getAsString(vd->getASTContext(), vd->getType());
