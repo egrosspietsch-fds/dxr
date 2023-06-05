@@ -1,5 +1,5 @@
 build: .npm_installed
-	cd analyze_js && npm install
+	cd analyze_js && ./node_modules/.bin/lockdown
 
 # Remove anything within node_modules that's not checked into git. Skip things
 # with spaces in them, lest xargs screw up and delete the wrong thing.
@@ -14,7 +14,7 @@ lint: build
 # target redoes the install if the packages or lockdown files are newer than
 # that file:
 .npm_installed: analyze_js/package.json analyze_js/lockdown.json
-	cd analyze_js && npm install
+	cd analyze_js && ./node_modules/.bin/lockdown
 	touch $@
 
 .PHONY: build clean lint

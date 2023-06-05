@@ -116,7 +116,7 @@ dxr/static_unhashed/js/templates.js: dxr/templates/nunjucks/*.html \
 # target redoes the install if the packages or lockdown files are newer than
 # that file:
 .npm_installed: tooling/node/package.json tooling/node/lockdown.json
-	cd tooling/node && npm install
+	cd tooling/node && ./node_modules/.bin/lockdown
 	touch $@
 
 # Install requirements in current virtualenv:
