@@ -87,7 +87,7 @@ docker_machine:
 # using a venv. If you don't specify an external venv, we reason that, after
 # creating one for you, you'll need Python packages installed.
 $(VIRTUAL_ENV)/bin/activate:
-	virtualenv $(VIRTUAL_ENV)
+	python2 -m virtualenv $(VIRTUAL_ENV)
 	rm -f .requirements_installed .dxr_installed
 
 # Install DXR into the venv. Reinstall it if the setuptools entry points may
