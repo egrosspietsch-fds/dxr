@@ -27,6 +27,18 @@
   (CLANG_VERSION_MAJOR > (major) || \
    (CLANG_VERSION_MAJOR == (major) && CLANG_VERSION_MINOR >= (minor)))
 
+#if CLANG_AT_LEAST(12, 0)
+#define GET_BEGIN_LOC() getBeginLoc()
+#define GET_END_LOC() getEndLoc()
+#else
+#define GET_BEGIN_LOC() getLocStart()
+#define GET_END_LOC() getLocEnd()
+#endif
+
+#if CLANG_AT_LEAST(16, 0)
+#include <clang/Basic/FileEntry.h>
+#endif
+
 using namespace clang;
 
 namespace {
@@ -135,30 +147,24 @@ public:
   void Ifdef(SourceLocation loc, const Token &tok) override;
   void Ifndef(SourceLocation loc, const Token &tok) override;
 #endif
-#if CLANG_AT_LEAST(7, 0)
   void InclusionDirective(
       SourceLocation hashLoc,
       const Token &includeTok,
       StringRef fileName,
       bool isAngled,
       CharSourceRange filenameRange,
-      const FileEntry *file,
-      StringRef searchPath,
-      StringRef relativePath,
-      const Module *imported,
-      SrcMgr::CharacteristicKind FileType) override;
+#if CLANG_AT_LEAST(16, 0)
+      OptionalFileEntryRef file,
 #else
-  void InclusionDirective(
-      SourceLocation hashLoc,
-      const Token &includeTok,
-      StringRef fileName,
-      bool isAngled,
-      CharSourceRange filenameRange,
       const FileEntry *file,
+#endif
       StringRef searchPath,
       StringRef relativePath,
-      const Module *imported) override;
+      const Module *imported
+#if CLANG_AT_LEAST(12, 0)
+      , SrcMgr::CharacteristicKind fileType
 #endif
+      ) override;
 };
 
 // IndexConsumer is our primary AST consumer.
@@ -331,8 +337,8 @@ public:
         decl = def;
     }
 
-    const std::string &filename = sm.getFilename(decl->getLocation());
-    return getFileInfo(filename)->realname;
+    StringRef filename = sm.getFilename(decl->getLocation());
+    return getFileInfo(filename.str())->realname;
   }
 
   // This is a wrapper around NamedDecl::getQualifiedNameAsString.
@@ -428,7 +434,7 @@ public:
     // rather have the expansion location than the presumed one, as we're not
     // interested in lies told by the #lines directive.
     StringRef filename = sm.getFilename(loc);
-    const FileInfoPtr &f = getFileInfo(filename);
+    const FileInfoPtr &f = getFileInfo(filename.str());
     out = &(f->info);
     *out << name;
   }
@@ -561,7 +567,7 @@ public:
       recordValue("qualname", getQualifiedName(*nd));
       recordValue("loc", locationToString(begin = d->getLocation()));
       recordValue("locend", locationToString(afterToken(begin)));
-      recordValue("kind", d->getKindName());
+      recordValue("kind", d->getKindName().str());
       printScope(d);
       *out << std::endl;
     }
@@ -702,6 +708,8 @@ public:
       const Expr *init = vd->getAnyInitializer(vd);
       if (!isa<ParmVarDecl>(vd) &&
           init && !init->getType().isNull() && !init->isValueDependent() &&
+          !vd->getType().isNull() && !vd->getType()->isDependentType() &&
+          !dyn_cast<DependentNameType>(vd->getType().getTypePtrOrNull()) &&
           vd->getType().isConstQualified()) {
         if (const APValue *apv = vd->evaluateValue()) {
           std::string ret = apv->getAsString(vd->getASTContext(), vd->getType());
@@ -716,7 +724,12 @@ public:
         }
       }
     } else if (EnumConstantDecl *ecd = dyn_cast<EnumConstantDecl>(d)) {
+#if CLANG_AT_LEAST(16,0)
+      //https://github.com/llvm/llvm-project/commit/61cdaf66fe22be2b5942ddee4f46a998b4f3ee29
+      return toString(ecd->getInitVal(), 10);
+#else
       return ecd->getInitVal().toString(10);
+#endif
     }
     return std::string();
   }
@@ -955,7 +968,7 @@ public:
   }
 
   bool VisitCallExpr(CallExpr *e) {
-    if (!interestingLocation(e->getLocStart()))
+    if (!interestingLocation(e->GET_BEGIN_LOC()))
       return true;
 
     Decl *callee = e->getCalleeDecl();
@@ -968,9 +981,9 @@ public:
     // 1. callee isn't necessarily a function. Think function pointers.
     // 2. We might not be in a function. Think global function decls
     // 3. Virtual functions need not be called virtually!
-    beginRecord("call", e->getLocStart());
-    recordValue("callloc", locationToString(e->getLocStart()));
-    recordValue("calllocend", locationToString(e->getLocEnd()));
+    beginRecord("call", e->GET_BEGIN_LOC());
+    recordValue("callloc", locationToString(e->GET_BEGIN_LOC()));
+    recordValue("calllocend", locationToString(e->GET_END_LOC()));
     if (interestingLocation(callee->getLocation()))
       recordValue("calleeloc", locationToString(callee->getLocation()));
     recordValue("name", namedCallee->getNameAsString());
@@ -995,7 +1008,7 @@ public:
   }
 
   bool VisitCXXConstructExpr(CXXConstructExpr *e) {
-    if (!interestingLocation(e->getLocStart()))
+    if (!interestingLocation(e->GET_BEGIN_LOC()))
       return true;
 
     CXXConstructorDecl *callee = e->getConstructor();
@@ -1006,9 +1019,9 @@ public:
     // 1. callee isn't necessarily a function. Think function pointers.
     // 2. We might not be in a function. Think global function decls
     // 3. Virtual functions need not be called virtually!
-    beginRecord("call", e->getLocStart());
-    recordValue("callloc", locationToString(e->getLocStart()));
-    recordValue("calllocend", locationToString(e->getLocEnd()));
+    beginRecord("call", e->GET_BEGIN_LOC());
+    recordValue("callloc", locationToString(e->GET_BEGIN_LOC()));
+    recordValue("calllocend", locationToString(e->GET_END_LOC()));
     if (interestingLocation(callee->getLocation()))
       recordValue("calleeloc", locationToString(callee->getLocation()));
     recordValue("name", callee->getNameAsString());
@@ -1125,13 +1138,14 @@ public:
         // TODO: Why do we want to attach the warning to the macro definition
         // site rather than its use?
         loc = sm.getImmediateSpellingLoc(loc);
-      } else {
-#if CLANG_AT_LEAST(7, 0)
-        loc = sm.getImmediateExpansionRange(loc).getBegin();
-#else
-        loc = sm.getImmediateExpansionRange(loc).first;
-#endif
       }
+      else
+        loc = sm.getImmediateExpansionRange(loc).
+#if CLANG_AT_LEAST(12, 0)
+          getBegin();
+#else
+          first;
+#endif
     }
     return loc;
   }
@@ -1281,7 +1295,11 @@ public:
       StringRef fileName,
       bool isAngled,
       CharSourceRange filenameRange,
+#if CLANG_AT_LEAST(16, 0)
+      OptionalFileEntryRef file,
+#else
       const FileEntry *file,
+#endif
       StringRef searchPath,
       StringRef relativePath,
       const Module *imported) {
@@ -1297,7 +1315,7 @@ public:
     if (!file)
       return;
 
-    const FileInfoPtr &target = getFileInfo(file->getName());
+    const FileInfoPtr &target = getFileInfo(file->getName().str());
     if (!target->interesting)
       return;
 
@@ -1405,36 +1423,27 @@ void PreprocThunk::Ifndef(SourceLocation loc, const Token &tok) {
   real->Ifndef(loc, tok, nullptr);
 }
 #endif
-#if CLANG_AT_LEAST(7, 0)
 void PreprocThunk::InclusionDirective(
     SourceLocation hashLoc,
     const Token &includeTok,
     StringRef fileName,
     bool isAngled,
     CharSourceRange filenameRange,
-    const FileEntry *file,
-    StringRef searchPath,
-    StringRef relativePath,
-    const Module *imported,
-    SrcMgr::CharacteristicKind) {
-  real->InclusionDirective(hashLoc, includeTok, fileName, isAngled, filenameRange,
-                           file, searchPath, relativePath, imported);
-}
+#if CLANG_AT_LEAST(16, 0)
+      OptionalFileEntryRef file,
 #else
-void PreprocThunk::InclusionDirective(
-    SourceLocation hashLoc,
-    const Token &includeTok,
-    StringRef fileName,
-    bool isAngled,
-    CharSourceRange filenameRange,
-    const FileEntry *file,
+      const FileEntry *file,
+#endif
     StringRef searchPath,
     StringRef relativePath,
-    const Module *imported) {
+    const Module *imported
+#if CLANG_AT_LEAST(12, 0)
+    , SrcMgr::CharacteristicKind fileType
+#endif
+    ) {
   real->InclusionDirective(hashLoc, includeTok, fileName, isAngled, filenameRange,
                            file, searchPath, relativePath, imported);
 }
-#endif
 
 // Our plugin entry point.
 class DXRIndexAction : public PluginASTAction {
