@@ -35,6 +35,10 @@
 #define GET_END_LOC() getLocEnd()
 #endif
 
+#if CLANG_AT_LEAST(16, 0)
+#include <clang/Basic/FileEntry.h>
+#endif
+
 using namespace clang;
 
 namespace {
@@ -149,7 +153,11 @@ public:
       StringRef fileName,
       bool isAngled,
       CharSourceRange filenameRange,
+#if CLANG_AT_LEAST(16, 0)
+      OptionalFileEntryRef file,
+#else
       const FileEntry *file,
+#endif
       StringRef searchPath,
       StringRef relativePath,
       const Module *imported
@@ -716,7 +724,12 @@ public:
         }
       }
     } else if (EnumConstantDecl *ecd = dyn_cast<EnumConstantDecl>(d)) {
+#if CLANG_AT_LEAST(16,0)
+      //https://github.com/llvm/llvm-project/commit/61cdaf66fe22be2b5942ddee4f46a998b4f3ee29
+      return toString(ecd->getInitVal(), 10);
+#else
       return ecd->getInitVal().toString(10);
+#endif
     }
     return std::string();
   }
@@ -1282,7 +1295,11 @@ public:
       StringRef fileName,
       bool isAngled,
       CharSourceRange filenameRange,
+#if CLANG_AT_LEAST(16, 0)
+      OptionalFileEntryRef file,
+#else
       const FileEntry *file,
+#endif
       StringRef searchPath,
       StringRef relativePath,
       const Module *imported) {
@@ -1412,7 +1429,11 @@ void PreprocThunk::InclusionDirective(
     StringRef fileName,
     bool isAngled,
     CharSourceRange filenameRange,
-    const FileEntry *file,
+#if CLANG_AT_LEAST(16, 0)
+      OptionalFileEntryRef file,
+#else
+      const FileEntry *file,
+#endif
     StringRef searchPath,
     StringRef relativePath,
     const Module *imported
