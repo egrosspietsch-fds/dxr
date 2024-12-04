@@ -169,7 +169,7 @@ class Deployment(object):
         try:
             with cd(new_build_path):
                 # Make a fresh, blank virtualenv:
-                run('virtualenv -p {python} --no-site-packages {venv_name}',
+                run('virtualenv -p {python} {venv_name}',
                     python=self.python_path,
                     venv_name=VENV_NAME)
 
@@ -197,10 +197,6 @@ class Deployment(object):
                     run('make static &> /dev/null')
                     run('{pip} install --no-deps .',
                         pip=join(venv, 'bin', 'pip'))
-
-                # After installing, you always have to re-run this, even if we
-                # were reusing a venv:
-                run('virtualenv --relocatable {venv}', venv=venv)
 
                 run('chmod 755 .')  # mkdtemp uses a very conservative mask.
         except Exception:
