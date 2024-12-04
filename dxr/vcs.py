@@ -18,6 +18,7 @@ TODO:
 
 """
 from datetime import datetime
+import errno
 import marshal
 import os
 from os.path import exists, join, realpath, relpath, split
@@ -463,6 +464,15 @@ def file_contents_at_rev(source_folder, rel_file, revision):
                 return cls.get_contents(existent, join(nonexistent, file), revision, stderr=devnull)
             except subprocess.CalledProcessError:
                 continue
+            except OSError as e:
+                if e.errno == errno.ENOENT:
+                    # ENOENT is thrown when the VCS utility is not found in PATH environment variable.
+                    # Catch the exception and try the next VCS.
+                    continue
+                else:
+                    raise
+    # Unable to fetch contents through any VCS
+    return None
 
 
 class VcsCache(object):
