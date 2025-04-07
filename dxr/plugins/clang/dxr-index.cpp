@@ -160,11 +160,9 @@ public:
 #endif
       StringRef searchPath,
       StringRef relativePath,
-#if CLANG_AT_LEAST(19, 0)
-      const Module *suggestedModule,
-      bool moduleImported
-#else
       const Module *suggestedModule
+#if CLANG_AT_LEAST(19, 0)
+      , bool moduleImported
 #endif
 #if CLANG_AT_LEAST(12, 0)
       , SrcMgr::CharacteristicKind fileType
@@ -421,11 +419,19 @@ public:
 #else
     const std::string anon_ns = "<anonymous namespace>";
 #endif
+#if CLANG_AT_LEAST(19, 0)
     if (StringRef(ret).starts_with(anon_ns)) {
+#else
+    if (StringRef(ret).startswith(anon_ns)) {
+#endif
       const std::string &realname = getRealFilenameForDefinition(d);
       ret = "(" + ret.substr(1, anon_ns.size() - 2) + " in " + realname + ")" +
         ret.substr(anon_ns.size());
+#if CLANG_AT_LEAST(19, 0)
     } else if (d.getLinkageInternal() == Linkage::Internal) {
+#else
+    } else if (d.getLinkageInternal() == InternalLinkage) {
+#endif
       const std::string &realname = getRealFilenameForDefinition(d);
       ret = "(static in " + realname + ")::" + ret;
     }
@@ -616,7 +622,11 @@ public:
     if (!interestingLocation(d->getLocation()))
       return true;
 
+#if CLANG_AT_LEAST(19, 0)
     if (d->isThisDeclarationADefinition() || d->isPureVirtual()) {
+#else
+    if (d->isThisDeclarationADefinition() || d->isPure()) {
+#endif
       SourceLocation functionLocation = d->getLocation();
       beginRecord("function", functionLocation);
       std::string functionName = d->getNameAsString();
@@ -1307,8 +1317,7 @@ public:
 #endif
       StringRef searchPath,
       StringRef relativePath,
-      const Module *imported
-      ) {
+      const Module *imported) {
     PresumedLoc presumedHashLoc = sm.getPresumedLoc(hashLoc);
     if (!interestingLocation(hashLoc) ||
         filenameRange.isInvalid() ||
@@ -1442,11 +1451,9 @@ void PreprocThunk::InclusionDirective(
 #endif
     StringRef searchPath,
     StringRef relativePath,
-#if CLANG_AT_LEAST(19, 0)
-    const Module *suggestedModule,
-    bool moduleImported
-#else
     const Module *suggestedModule
+#if CLANG_AT_LEAST(19, 0)
+    , bool moduleImported
 #endif
 #if CLANG_AT_LEAST(12, 0)
     , SrcMgr::CharacteristicKind fileType
