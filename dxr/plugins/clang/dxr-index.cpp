@@ -160,7 +160,12 @@ public:
 #endif
       StringRef searchPath,
       StringRef relativePath,
-      const Module *imported
+#if CLANG_AT_LEAST(19, 0)
+      const Module *suggestedModule,
+      bool moduleImported
+#else
+      const Module *suggestedModule
+#endif
 #if CLANG_AT_LEAST(12, 0)
       , SrcMgr::CharacteristicKind fileType
 #endif
@@ -416,11 +421,11 @@ public:
 #else
     const std::string anon_ns = "<anonymous namespace>";
 #endif
-    if (StringRef(ret).startswith(anon_ns)) {
+    if (StringRef(ret).starts_with(anon_ns)) {
       const std::string &realname = getRealFilenameForDefinition(d);
       ret = "(" + ret.substr(1, anon_ns.size() - 2) + " in " + realname + ")" +
         ret.substr(anon_ns.size());
-    } else if (d.getLinkageInternal() == InternalLinkage) {
+    } else if (d.getLinkageInternal() == Linkage::Internal) {
       const std::string &realname = getRealFilenameForDefinition(d);
       ret = "(static in " + realname + ")::" + ret;
     }
@@ -611,7 +616,7 @@ public:
     if (!interestingLocation(d->getLocation()))
       return true;
 
-    if (d->isThisDeclarationADefinition() || d->isPure()) {
+    if (d->isThisDeclarationADefinition() || d->isPureVirtual()) {
       SourceLocation functionLocation = d->getLocation();
       beginRecord("function", functionLocation);
       std::string functionName = d->getNameAsString();
@@ -1302,7 +1307,8 @@ public:
 #endif
       StringRef searchPath,
       StringRef relativePath,
-      const Module *imported) {
+      const Module *imported
+      ) {
     PresumedLoc presumedHashLoc = sm.getPresumedLoc(hashLoc);
     if (!interestingLocation(hashLoc) ||
         filenameRange.isInvalid() ||
@@ -1436,13 +1442,18 @@ void PreprocThunk::InclusionDirective(
 #endif
     StringRef searchPath,
     StringRef relativePath,
-    const Module *imported
+#if CLANG_AT_LEAST(19, 0)
+    const Module *suggestedModule,
+    bool moduleImported
+#else
+    const Module *suggestedModule
+#endif
 #if CLANG_AT_LEAST(12, 0)
     , SrcMgr::CharacteristicKind fileType
 #endif
     ) {
   real->InclusionDirective(hashLoc, includeTok, fileName, isAngled, filenameRange,
-                           file, searchPath, relativePath, imported);
+                           file, searchPath, relativePath, suggestedModule);
 }
 
 // Our plugin entry point.
